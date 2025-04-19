@@ -48,36 +48,36 @@ FORCE_SCAFFOLD=false
 NONINTERACTIVE=false
 
 usage() {
-  cat <<EOF
-Usage: $SCRIPT_NAME [OPTIONS]
+  cat <<-EOF
+	Usage: $SCRIPT_NAME [OPTIONS]
 
-Options:
-  -n, --dry-run       Dry‑run mode (commands are printed, not executed)
-  -v, --verbose       Enable Bash debug output
-  -c, --config FILE   Source additional configuration
-      --init          Force re‑creation of lib/ modules then exit
-      --yes           Non‑interactive; auto‑answer prompts “yes”
-  -h, --help          Show this help
-  --version           Show version and exit
-EOF
+	Options:
+	  -n, --dry-run       Dry‑run mode (commands are printed, not executed)
+	  -v, --verbose       Enable Bash debug output
+	  -c, --config FILE   Source additional configuration
+	      --init          Force re‑creation of lib/ modules then exit
+	      --yes           Non‑interactive; auto‑answer prompts “yes”
+	  -h, --help          Show this help
+	  --version           Show version and exit
+	EOF
   exit 1
 }
 
-# Parse arguments
+# ----- Parse arguments -----
 while [[ $# -gt 0 ]]; do
   case $1 in
-    -n|--dry-run) DRY_RUN=true; shift ;;
-    -v|--verbose) set -x; shift ;;
-    -c|--config) CONFIG_FILE="$2"; shift 2 ;;
-    --init) FORCE_SCAFFOLD=true; shift ;;
-    --yes) NONINTERACTIVE=true; shift ;;
-    --version) echo "$SCRIPT_NAME v$VERSION"; exit 0 ;;
-    -h|--help) usage ;;
-    *) break ;;
+    -n|--dry-run)        DRY_RUN=true; shift ;;
+    -v|--verbose)        set -x; shift ;;
+    -c|--config)         CONFIG_FILE="$2"; shift 2 ;;
+    --init)              FORCE_SCAFFOLD=true; shift ;;
+    --yes)               NONINTERACTIVE=true; shift ;;
+    --version)           echo "$SCRIPT_NAME v$VERSION"; exit 0 ;;
+    -h|--help)           usage ;;
+    *)                   break ;;
   esac
 done
 
-# Source extra config if given
+# ----- Source extra config if given -----
 if [[ -n "$CONFIG_FILE" ]]; then
   [[ -f "$CONFIG_FILE" ]] || { log_error "Config file not found: $CONFIG_FILE"; exit 1; }
   # shellcheck source=/dev/null
@@ -127,8 +127,8 @@ clear_cache_browser() {
 }'
   TPL[large_files.sh]='#!/usr/bin/env bash
 remove_large_files() {
-  log_info "Removing files > ${MAX_SIZE:-100M} older than ${MAX_AGE:-30} days in $HOME"
-  execute "find \"$HOME\" -type f -size +${MAX_SIZE:-100M} -mtime +${MAX_AGE:-30} -exec rm -f {} +"
+  log_info "Removing files > ${MAX_SIZE:-100M} older than ${MAX_AGE:-30} days in \$HOME"
+  execute "find \"\$HOME\" -type f -size +\${MAX_SIZE:-100M} -mtime +\${MAX_AGE:-30} -exec rm -f {} +"
 }'
   TPL[docker_cleanup.sh]='#!/usr/bin/env bash
 docker_cleanup() {
@@ -138,12 +138,12 @@ docker_cleanup() {
   TPL[journalctl_cleanup.sh]='#!/usr/bin/env bash
 journalctl_cleanup() {
   log_info "Vacuuming journal to ${JOURNAL_MAX_SIZE:-200M}"
-  execute "journalctl --vacuum-size=${JOURNAL_MAX_SIZE:-200M}"
+  execute "journalctl --vacuum-size=\${JOURNAL_MAX_SIZE:-200M}"
 }'
   TPL[tmpreaper_cleanup.sh]='#!/usr/bin/env bash
 tmpreaper_cleanup() {
   log_info "Running tmpreaper on /tmp for ${TMPREAPER_AGE:-5d}"
-  execute "tmpreaper --protect '\''*.X*'\'' ${TMPREAPER_AGE:-5d} /tmp"
+  execute "tmpreaper --protect '\''*.X*'\'' \${TMPREAPER_AGE:-5d} /tmp"
 }'
   TPL[tmpfiles_cleanup.sh]='#!/usr/bin/env bash
 tmpfiles_cleanup() {
@@ -159,14 +159,14 @@ logrotate_cleanup() {
 snap_cleanup() {
   log_info "Removing old snap revisions"
   for rev in $(snap list --all | awk '\''/disabled/ {print $1, $3}'\''); do
-    execute "snap remove $rev"
+    execute "snap remove \$rev"
   done
 }'
 
   for m in "${MODULES[@]}"; do
     target="$LIB_DIR/$m"
     if [[ ! -f "$target" ]] || $FORCE_SCAFFOLD; then
-      echo "Creating $m"
+      echo "Creating module: $m"
       printf '%s\n' "${TPL[$m]}" > "$target"
       chmod +x "$target"
     fi
@@ -175,7 +175,7 @@ snap_cleanup() {
   log_info "Module scaffolding complete."
 }
 
-# Detect missing modules
+# ----- Detect missing modules & scaffold if needed -----
 missing=false
 for m in "${MODULES[@]}"; do
   [[ -f "$LIB_DIR/$m" ]] || missing=true
@@ -188,20 +188,25 @@ if $missing || $FORCE_SCAFFOLD; then
   else
     echo "Modules missing in $LIB_DIR."
     read -rp "Generate them now? [Y/n]: " ans
-    [[ "$ans" =~ ^[Yy]|$ ]] && scaffold_modules || { log_error "Aborting."; exit 1; }
+    if [[ "$ans" =~ ^[Yy]|$ ]]; then
+      scaffold_modules
+    else
+      log_error "Aborting due to missing modules."
+      exit 1
+    fi
     $FORCE_SCAFFOLD && { log_info "--init used; exiting."; exit 0; }
   fi
 fi
 
-# ----- Source Modules -----
+# ----- Source all cleanup modules -----
 for m in "${MODULES[@]}"; do
   # shellcheck source=/dev/null
   source "$LIB_DIR/$m"
 done
 
-# ----- Package Cleanup Integration -----
+# ----- PACKAGE CLEANUP INTEGRATION -----
 
-# Ensure root
+# Ensure root privileges
 require_root() {
   if [[ $EUID -ne 0 ]]; then
     whiptail --title "Privileges Required" --msgbox \
@@ -220,7 +225,7 @@ require_cmd() {
   fi
 }
 
-# Distro detection
+# Detect distro helper
 detect_distro() {
   if [[ -r /etc/os-release ]]; then
     . /etc/os-release
@@ -230,13 +235,14 @@ detect_distro() {
   fi
 }
 
-# Gather package sizes
+# Gather top-20 largest packages/apps
 get_pkg_sizes() {
   case "$(detect_distro)" in
     ubuntu|debian|kali|mint|pop|zorin|elementary)
-      local pkgs=$(apt-mark showmanual)
-      dpkg-query -W --showformat='${Installed-Size}\t${Package}\n' \
-        | grep -Ff <(echo "$pkgs") | sort -nr
+      local pkgs
+      pkgs=$(apt-mark showmanual)
+      dpkg-query -W --showformat='${Installed-Size}\t${Package}\n' |
+        grep -Ff <(echo "$pkgs") | sort -nr
       ;;
     fedora|rhel|centos)
       rpm -qa --queryformat '%{SIZE}\t%{NAME}\n' | sort -nr
@@ -257,14 +263,14 @@ get_pkg_sizes() {
   esac
 }
 
-# Uninstall a package
+# Uninstall helper
 uninstall_pkg() {
   case "$(detect_distro)" in
-    ubuntu|debian|kali|mint) execute "apt-get remove --purge -y $1" ;;
-    fedora|rhel|centos)      execute "dnf erase -y $1" ;;
-    arch|manjaro|endeavouros) execute "pacman -Rs --noconfirm $1" ;;
-    opensuse*)               execute "zypper rm -y $1" ;;
-    *)                       execute "flatpak uninstall -y $1" ;;
+    ubuntu|debian|kali|mint)  execute "apt-get remove --purge -y $1" ;;
+    fedora|rhel|centos)       execute "dnf erase -y $1" ;;
+    arch|manjaro|endeavouros)  execute "pacman -Rs --noconfirm $1" ;;
+    opensuse*)                execute "zypper rm -y $1" ;;
+    *)                        execute "flatpak uninstall -y $1" ;;
   esac
   log_info "Uninstalled: $1"
 }
@@ -283,15 +289,13 @@ clean_packages() {
   tmpfile=$(mktemp)
   get_pkg_sizes | head -n 20 >"$tmpfile"
 
-  # Build checklist array
   checklist=()
   while read -r sz pkg; do
-    checklist+=("$pkg" "$sz" OFF)
+    checklist+=( "$pkg" "$sz" OFF )
   done <"$tmpfile"
 
-  # Show checklist
-  choices=$(whiptail --title "Select to Uninstall" --checklist \
-    "Size  Package" 20 70 12 "${checklist[@]}" 3>&1 1>&2 2>&3)
+  choices=$(whiptail --title "Select to Uninstall" \
+    --checklist "Size  Package" 20 70 12 "${checklist[@]}" 3>&1 1>&2 2>&3)
   clear
 
   [[ -z "$choices" ]] && { whiptail --msgbox "No selection made." 8 50 >&3; return; }
@@ -306,20 +310,22 @@ clean_packages() {
     uninstall_pkg "$pkg"
   done
 
-  whiptail --title "Done" --msgbox \
-    "Selected packages uninstalled." 8 50 >&3
+  whiptail --title "Done" --msgbox "Selected packages uninstalled." 8 50 >&3
   log_info "Package cleanup complete."
 }
 
 # ----- Progress Indicator -----
 clean_with_progress() {
-  { echo 20; sleep 1; echo 50; sleep 1; echo 80; sleep 1; echo 100; } \
-    | whiptail --gauge "Running full cleanup..." 8 60 0
+  { echo 20; sleep 1
+    echo 50; sleep 1
+    echo 80; sleep 1
+    echo 100; sleep 1
+  } | whiptail --gauge "Running full cleanup..." 8 60 0
 }
 
 # ----- Main Menu -----
 main_menu() {
-  whiptail --title "Power Cleaner" --menu "Select action:" 20 70 14 \
+  whiptail --title "Power Cleaner" --menu "Select action:" 20 70 15 \
     1  "Clean APT Cache" \
     2  "Clean Thumbnails" \
     3  "Remove Old Logs" \
@@ -336,7 +342,7 @@ main_menu() {
     14 "Package Cleanup" \
     15 "Full Cleanup w/ Progress" \
     16 "Toggle Dry‑Run (Now: $DRY_RUN)" \
-     0 "Exit" 3>&1 1>&2 2>&3
+     0  "Exit" 3>&1 1>&2 2>&3
 }
 
 # ----- Menu Loop -----
