@@ -1,0 +1,3 @@
+Xephyr -br -fullscreen -resizeable :20 &
+sleep 5
+DISPLAY=:20 startxfce4 &
