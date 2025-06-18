@@ -10,12 +10,6 @@ error() {
   exit 1
 }
 
-# Ensure script is run as root
-if [[ "$EUID" -ne 0 ]]; then
-  echo -e "\e[91mThis script must be run as root. Please use: sudo bash <script>\e[0m"
-  exit 1
-fi
-
 clear
 echo -e "\e[96mStarting Pi-Apps installation script...\e[0m"
 sleep 1
