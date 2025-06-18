@@ -12,7 +12,8 @@ error() {
 
 # Ensure script is run as root
 if [[ "$EUID" -ne 0 ]]; then
-  error "This script must be run as root. Please use: sudo ./script.sh"
+  echo -e "\e[91mThis script must be run as root. Please use: sudo bash <script>\e[0m"
+  exit 1
 fi
 
 clear
@@ -20,7 +21,7 @@ echo -e "\e[96mStarting Pi-Apps installation script...\e[0m"
 sleep 1
 
 # Function to safely install via Pi-Apps
-def_piapps_install() {
+piapps_install() {
   local app="$1"
   echo -e "\n\e[94mInstalling $app via Pi-Apps...\e[0m"
   pi-apps install "$app" || error "Failed to install $app."
@@ -35,18 +36,18 @@ else
 fi
 
 # Install Wine, Box64, Box86
-def_piapps_install wine
-def_piapps_install box64
-def_piapps_install box86
+piapps_install wine
+piapps_install box64
+piapps_install box86
 
 # Run uninstall analytics (optional)
-SCRIPT_DIR="$(readlink -f "$(dirname "$0")")"
+SCRIPT_DIR="$(dirname "$(realpath "$0" 2>/dev/null || echo "$PWD")")"
 if [ -x "${SCRIPT_DIR}/api" ]; then
   "${SCRIPT_DIR}/api" shlink_link script uninstall || echo "Warning: Failed to run uninstall analytics."
 fi
 
 # Prompt to uninstall YAD (GUI toolkit)
-if ! dpkg -s yad &>/dev/null && command -v zenity &>/dev/null; then
+if dpkg -s yad &>/dev/null && command -v zenity &>/dev/null; then
   zenity --title='Pi-Apps' --window-icon="${SCRIPT_DIR}/icons/logo.png" \
     --list --text="Do you want to uninstall YAD?" \
     --ok-label=Yes --cancel-label=No \
@@ -62,7 +63,7 @@ rm -f ~/.config/autostart/pi-apps-updater.desktop
 rm -f ~/Desktop/pi-apps.desktop
 
 # Remove CLI launcher
-sudo rm -f /usr/local/bin/pi-apps
+rm -f /usr/local/bin/pi-apps
 
 # Final Message
 echo -e "\n\e[92mUninstallation complete. Only \$HOME/pi-apps still remains.\e[0m"
