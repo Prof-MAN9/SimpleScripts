@@ -30,9 +30,9 @@ else
 fi
 
 # Install Wine, Box64, Box86
-piapps_install wine
-piapps_install box64
-piapps_install box86
+~/pi-apps/manage install Wine
+~/pi-apps/manage install Box64
+~/pi-apps/manage install Box86
 
 # Run uninstall analytics (optional)
 SCRIPT_DIR="$(dirname "$(realpath "$0" 2>/dev/null || echo "$PWD")")"
