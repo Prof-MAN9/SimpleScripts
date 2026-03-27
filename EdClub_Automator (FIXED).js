@@ -1,4 +1,4 @@
-// Typing Club Automator - AUTO START (FIXED & POLISHED)
+// Typing Club Automator - AUTO START (v3 - ENTER Patched)
 (function() {
     'use strict';
     if (window.typingClubBot) {
@@ -23,7 +23,7 @@
 
     gui.innerHTML = `
     <div id="bot-header" style="padding: 15px; background: rgba(255,255,255,0.05); cursor: move; display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 13px; letter-spacing: 0.5px;">
-        <span>🎯 TYPING CLUB BOT: MADE BY PANCH</span>
+        <span>🎯 EDCLUB BOT: MADE BY Prof_MAN</span>
         <span id="bot-close" style="cursor: pointer; font-size: 22px; line-height: 1; opacity: 0.6;">&times;</span>
     </div>
     
@@ -119,12 +119,18 @@
     document.addEventListener('mouseup', () => isDragging = false);
 
     function detectLevel() {
-        const letters = document.querySelectorAll('div.typable span.letter');
+        // --- UPDATED: handle span.token_unit (chars + spaces) and span._enter ---
+        const letters = document.querySelectorAll('div.typable span.token_unit');
         if (letters && letters.length > 0) {
-            const text = Array.from(letters).map(s => s.textContent).join('');
+            const text = Array.from(letters).map(s => {
+                if (s.querySelector('._enter') || s.querySelector('br')) return '\n'; // Enter token (._enter is nested inside token_unit)
+                if (s.querySelector('i')) return ' ';                                 // Space token (has <i> child)
+                return s.textContent;                                                 // Regular character token
+            }).join('');
             levelInfo.textContent = `${text.length} chars detected`;
             return { text, type: 'typing' };
         }
+        // --- END UPDATED ---
 
         const typable = document.querySelector('div.typable');
         if (typable && typable.textContent) {
@@ -149,6 +155,7 @@
 
         const specialChars = {
             ' ': { code: 'Space', keyCode: 32 },
+            '\n': { code: 'Enter', keyCode: 13 },
             '"': { code: 'Quote', keyCode: 222, shiftKey: true },
             "'": { code: 'Quote', keyCode: 222, shiftKey: false },
             ',': { code: 'Comma', keyCode: 188 },
@@ -176,16 +183,18 @@
             shiftKey = false;
         }
 
+        const isEnter = (char === '\n' || char === '\r');
         const opts = {
-            key: char, code: code, keyCode: keyCode, which: keyCode,
-            shiftKey: shiftKey, bubbles: true, cancelable: true, view: window
+            key: isEnter ? 'Enter' : char, code: code, keyCode: isEnter ? 13 : keyCode, which: isEnter ? 13 : keyCode,
+            shiftKey: shiftKey, bubbles: true, cancelable: true, composed: true, view: window
         };
-
         field.dispatchEvent(new KeyboardEvent('keydown', opts));
         field.dispatchEvent(new KeyboardEvent('keypress', opts));
-        field.value += char;
-        field.dispatchEvent(new Event('input', { bubbles: true }));
-        field.dispatchEvent(new Event('change', { bubbles: true }));
+        if (!isEnter) {
+            field.value += char;
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+            field.dispatchEvent(new Event('change', { bubbles: true }));
+        }
         field.dispatchEvent(new KeyboardEvent('keyup', opts));
     }
 
@@ -264,7 +273,7 @@
             return;
         }
 
-        console.log('🚀 Typing... did you know that PANCH modified this!!!!!!!!!');
+        console.log('🚀 Typing... did you know that Prof_MAN modified this!!!!!!!!!');
         input.value = '';
         input.focus();
         await new Promise(r => setTimeout(r, 100));
