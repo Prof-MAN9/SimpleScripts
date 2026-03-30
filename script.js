@@ -1,4 +1,4 @@
-// Typing Club Automator - AUTO START (v3 - ENTER Patched)
+// Typing Club Automator - AUTO START (v4 - Game Support)
 (function() {
     'use strict';
     if (window.typingClubBot) {
@@ -139,11 +139,22 @@
             return { text, type: 'typing' };
         }
 
-        const gameContainer = document.querySelector('.game-container, .game-canvas, canvas, #game, [class*="game"]');
+        // --- UPDATED: identify TypingClub typing games specifically via approuter ---
+        try {
+            const app = window.approuter?.lesson?.activity?.app;
+            if (app && app.startsWith('typing.games.')) {
+                const gameName = app.split('.')[2]; // e.g. "FloatingBubbles", "BalloonValley"
+                levelInfo.textContent = `Game: ${gameName}`;
+                return { text: null, type: 'game', gameName };
+            }
+        } catch (e) {}
+
+        const gameContainer = document.querySelector('#game canvas, #game');
         if (gameContainer) {
             levelInfo.textContent = 'Game detected';
-            return { text: null, type: 'game' };
+            return { text: null, type: 'game', gameName: 'unknown' };
         }
+        // --- END UPDATED ---
 
         return { text: null, type: null };
     }
@@ -198,6 +209,362 @@
         field.dispatchEvent(new KeyboardEvent('keyup', opts));
     }
 
+    // --- PATCHED: Type a single word into the game ---
+    //
+    // Complete TypingCore input chain (typing_core.js, confirmed):
+    //
+    //   TypingCore.init_keyboard_focus() creates a hidden <input> and prepends
+    //   it to <body>.  attach_capture() binds three jQuery handlers TO THAT INPUT:
+    //
+    //     $focusInput.keydown  → _input_handler_keydown → this.keyDown = e.keyCode
+    //     $focusInput.input    → _input_handler          → key = $focusInput.val()
+    //                                                       record_keydown_time(key)
+    //                                                       $focusInput.val('')   ← clears
+    //     $focusInput.keyup    → _input_handler_keyup    → this.prev_key = null
+    //
+    //   record_keydown_time is monkey-patched by GameWordManager, which buffers
+    //   chars, matches them against active word char_lists, and fires
+    //   core.events("keydown", {is_valid, chr}) that the Phaser game listens to.
+    //
+    //   Fallback (iOS / no_input_mode):
+    //     $(document).keypress → _keypress_handler → record_keydown_time(e.key)
+    //
+    //   Bonus: TypingCore.idkfa() calls record_keydown_time() directly for each
+    //   char. If the core is reachable we call that instead of synthesising events.
+    //
+    async function typeWordToGame(word) {
+        const wpm       = parseInt(speedSlider.value);
+        const baseDelay = 60000 / (wpm * 5);
+
+        // ── Path A: idkfa() — calls record_keydown_time directly on the core ────
+        // GameWordManager replaces core.record_keydown_time, so this goes through
+        // the full word-matching pipeline without any DOM event synthesis.
+        // The core is at this.core inside the Phaser MainState. In DEV_MODE
+        // games expose window.game; otherwise we can still find the core via the
+        // hidden input's jQuery data that TypingCore stores on the element.
+        const tryIdkfa = () => {
+            try {
+                // DEV_MODE path
+                const g = window.game;
+                if (g?.state) {
+                    const st = g.state.states[g.state.current];
+                    if (typeof st?.core?.record_keydown_time === 'function') {
+                        for (const char of word) {
+                            st.core.record_keydown_time(char);
+                        }
+                        return true;
+                    }
+                }
+            } catch (_) {}
+            return false;
+        };
+
+        if (tryIdkfa()) {
+            charsTypedCount += word.length;
+            charsTypedEl.textContent = charsTypedCount;
+            return true;
+        }
+
+        // ── Path B: hidden $focus_input events (desktop / normal mode) ──────────
+        // Selector: body > input[type='text'][aria-hidden='true']
+        // TypingCore does: $('body').prepend($inpt) with aria-hidden=true
+        const focusInput = document.querySelector(
+            "body > input[type='text'][aria-hidden='true']"
+        );
+
+        if (focusInput) {
+            focusInput.focus();
+
+            for (const char of word) {
+                if (!botRunning) return false;
+
+                const upper   = char.toUpperCase();
+                // Physical key code: always uppercase ASCII for letters
+                const keyCode = /[a-zA-Z]/.test(char) ? upper.charCodeAt(0) : char.charCodeAt(0);
+                const keyOpts = {
+                    key:        char,
+                    code:       /[a-zA-Z]/.test(char) ? `Key${upper}` : 'Unidentified',
+                    keyCode,
+                    which:      keyCode,
+                    bubbles:    true,
+                    cancelable: true,
+                    composed:   true,
+                    view:       window,
+                };
+
+                // 1. keydown → _input_handler_keydown sets this.keyDown = e.keyCode
+                focusInput.dispatchEvent(new KeyboardEvent('keydown', keyOpts));
+
+                // 2. Set value then fire input → _input_handler reads val, calls
+                //    record_keydown_time(key), then clears the input itself
+                focusInput.value = char;
+                focusInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+                // 3. keyup → _input_handler_keyup resets this.prev_key = null
+                //    (required so canUseKeyUpEvent guard allows the next char)
+                focusInput.dispatchEvent(new KeyboardEvent('keyup', keyOpts));
+
+                charsTypedCount++;
+                charsTypedEl.textContent = charsTypedCount;
+                await new Promise(r => setTimeout(r, baseDelay * (0.8 + Math.random() * 0.4)));
+            }
+            return true;
+        }
+
+        // ── Path C: $(document).keypress fallback (iOS / no_input_mode) ─────────
+        // _keypress_handler reads e.key and calls record_keydown_time directly.
+        console.warn('⚠️ focusInput not found — falling back to document keypress');
+        for (const char of word) {
+            if (!botRunning) return false;
+            const keyCode = char.charCodeAt(0);
+            document.dispatchEvent(new KeyboardEvent('keypress', {
+                key:        char,
+                keyCode,
+                which:      keyCode,
+                charCode:   keyCode,
+                bubbles:    true,
+                cancelable: true,
+                composed:   true,
+                view:       window,
+            }));
+            charsTypedCount++;
+            charsTypedEl.textContent = charsTypedCount;
+            await new Promise(r => setTimeout(r, baseDelay * (0.8 + Math.random() * 0.4)));
+        }
+        return true;
+    }
+
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PATCHED: Main game handler
+    //
+    // Detection strategy — two-tier:
+    //
+    //   Tier 1 (opportunistic): CanvasRenderingContext2D.fillText intercept.
+    //   Works when the game uses Phaser.Text, which renders each word to a
+    //   private off-screen 2D canvas.  Installed immediately so it covers all
+    //   future renders without needing the Phaser instance.
+    //
+    //   Tier 2 (primary fallback): direct lesson-text typing.
+    //   TypingClub games draw words via Phaser.BitmapText (glyph sprites —
+    //   confirmed present in phaser_1237_min.js), which never calls fillText.
+    //   When the hook captures nothing after a 3-second probe window, the bot
+    //   reads words directly from approuter.lesson and types them in order.
+    //   The game accepts each word that matches a live target and ignores the
+    //   rest, so the bot makes progress without needing live canvas state.
+    // ─────────────────────────────────────────────────────────────────────────
+    async function processTypingGame(gameName) {
+        console.log(`🎮 Typing game detected: ${gameName}`);
+        status.textContent = `🎮 ${gameName}…`;
+
+        // ── 1. Load lesson words (used for fillText filter AND direct fallback) ──
+        //
+        // The source shows `a.details.lesson_text` where `a` has both
+        // `a.lesson` and `a.details` as sibling keys — meaning lesson text
+        // lives at approuter.details.lesson_text, NOT inside approuter.lesson.
+        // We try every plausible path, then fall back to a recursive scan of
+        // the entire approuter object tree so future API changes don't break us.
+        let lessonWords = [];
+        try {
+            // Explicit paths — ordered most-to-least likely.
+            // Confirmed in games_1237_min.js: game core is initialised with
+            //   text: t.activity.text   where t = approuter.lesson
+            // Some games strip spaces: .replace(/\s/g,"") — we keep them for
+            // word splitting, then remove spaces when building the queue below.
+            const PATHS = [
+                () => window.approuter?.lesson?.activity?.text,
+                () => window.approuter?.details?.lesson_text,
+                () => window.approuter?.lesson?.activity?.lesson_text,
+                () => window.approuter?.lesson?.details?.lesson_text,
+                () => window.approuter?.lesson?.text,
+                () => window.approuter?.lesson?.lesson_text,
+            ];
+
+            let raw = null;
+            for (const fn of PATHS) {
+                try { raw = fn(); } catch (_) {}
+                if (typeof raw === 'string' && raw.trim().length > 1) break;
+                raw = null;
+            }
+
+            // Deep-scan fallback: walk approuter up to 4 levels looking for
+            // any property literally named 'lesson_text'
+            if (!raw) {
+                const seen = new WeakSet();
+                const deepFind = (obj, depth) => {
+                    if (depth > 4 || !obj || typeof obj !== 'object' || seen.has(obj)) return null;
+                    seen.add(obj);
+                    if (typeof obj.lesson_text === 'string' && obj.lesson_text.trim()) return obj.lesson_text.trim();
+                    for (const k of Object.keys(obj)) {
+                        try { const r = deepFind(obj[k], depth + 1); if (r) return r; } catch (_) {}
+                    }
+                    return null;
+                };
+                try { raw = deepFind(window.approuter, 0); } catch (_) {}
+            }
+
+            if (typeof raw === 'string' && raw.trim()) {
+                lessonWords = raw.trim().split(/\s+/).filter(Boolean);
+                console.log(`📋 ${lessonWords.length} lesson words loaded`);
+            } else {
+                // Emit a diagnostic dump so the correct path can be found manually
+                console.warn('⚠️ lesson_text not found. approuter snapshot:',
+                    JSON.stringify({
+                        keys:          Object.keys(window.approuter || {}),
+                        detailsKeys:   Object.keys(window.approuter?.details || {}),
+                        lessonKeys:    Object.keys(window.approuter?.lesson || {}),
+                        activityKeys:  Object.keys(window.approuter?.lesson?.activity || {}),
+                    }, null, 2));
+            }
+        } catch (_) {}
+        const lessonSet = new Set(lessonWords.map(w => w.toLowerCase()));
+
+        // ── 2. Tier-1: fillText prototype intercept ───────────────────────────────
+        // Phaser.Text calls this.context.fillText() on a private off-screen canvas
+        // every time its text property is updated.  Patching the prototype here
+        // catches all 2D contexts — including ones already created — because
+        // prototype lookup happens at call time, not at object creation time.
+        const wordQueue  = [];
+        const recentSeen = new Map();
+        const DEDUP_MS   = 250;    // collapse shadow + fill passes of the same word
+        const WORD_RE    = /^[a-zA-Z']{1,30}$/;
+
+        const origFillText = CanvasRenderingContext2D.prototype.fillText;
+        CanvasRenderingContext2D.prototype.fillText = function (text, x, y, ...rest) {
+            const word = String(text ?? '').trim();
+            if (WORD_RE.test(word)) {
+                const lw  = word.toLowerCase();
+                const now = Date.now();
+                const ok  = (lessonSet.size === 0 || lessonSet.has(lw))
+                         && (!recentSeen.has(lw) || now - recentSeen.get(lw) > DEDUP_MS);
+                if (ok) {
+                    recentSeen.set(lw, now);
+                    wordQueue.push(word);
+                    console.log(`📥 fillText: "${word}" (q=${wordQueue.length})`);
+                }
+            }
+            return origFillText.call(this, text, x, y, ...rest);
+        };
+        const unhook = () => { CanvasRenderingContext2D.prototype.fillText = origFillText; };
+
+        // ── 3. DOM-only game-done check ───────────────────────────────────────────
+        const isGameDone = () => {
+            const el = document.querySelector('#game');
+            return !el || el.style.display === 'none'
+                || !!window.approuter?.modelManager?._attempt;
+        };
+
+        // ── 4. Wait for the game canvas ───────────────────────────────────────────
+        status.textContent = `🎮 ${gameName} — waiting for canvas…`;
+        let canvas = null;
+        for (let i = 0; i < 80 && !canvas; i++) {
+            canvas = document.querySelector('#game canvas');
+            if (!canvas) await new Promise(r => setTimeout(r, 100));
+        }
+        if (!canvas) {
+            unhook();
+            status.textContent = '⚠️ Game canvas not found';
+            console.error('❌ #game canvas never appeared');
+            stopBot();
+            return;
+        }
+
+        // Allow the game's preload → create cycle to finish so first words render
+        await new Promise(r => setTimeout(r, 800));
+        status.textContent = `🎮 ${gameName} — detecting words…`;
+        console.log('✅ Canvas ready — probing fillText hook for 3 s…');
+
+        // ── 5. 3-second probe: give fillText hook a chance to capture words ───────
+        const probeEnd = Date.now() + 3000;
+        while (botRunning && !isGameDone() && wordQueue.length === 0 && Date.now() < probeEnd) {
+            await new Promise(r => setTimeout(r, 150));
+        }
+
+        // ── 6. Tier-2 fallback if fillText captured nothing ───────────────────────
+        if (wordQueue.length === 0) {
+            if (lessonWords.length === 0) {
+                unhook();
+                status.textContent = '⚠️ No words — cannot read approuter.lesson';
+                console.error('❌ lessonWords empty and fillText yielded nothing');
+                stopBot();
+                return;
+            }
+            // Game uses BitmapText (or hook missed the window).
+            // Seed the queue with lesson words in their native order.
+            // The game accepts each word that matches a live target and ignores others.
+            console.log(`ℹ️ fillText inactive — direct lesson-word mode (${lessonWords.length} words)`);
+            status.textContent = `📝 Direct mode: ${lessonWords.length} words`;
+            for (const w of lessonWords) wordQueue.push(w); // no trailing space — GameWordManager matches exact chars
+        }
+
+        // ── 7. Main typing loop ───────────────────────────────────────────────────
+        // In direct mode the game keeps spawning monsters/bubbles throughout its
+        // full duration, so we cycle the word list continuously rather than
+        // stopping after one pass.  fillText mode drains naturally as the game
+        // queues new words itself.
+        const isDirectMode = wordQueue.length > 0 && lessonWords.length > 0
+                          && wordQueue[0] === lessonWords[0];  // seeded from lesson list
+        let staleTicks = 0;
+        const TICK_MS   = 100;
+        const MAX_STALE = 300;   // 300 × 100 ms ≈ 30 s
+
+        while (botRunning) {
+            if (isGameDone()) break;
+
+            if (wordQueue.length > 0) {
+                staleTicks = 0;
+                const word = wordQueue.shift();
+                status.textContent = `⌨️ "${word}"`;
+                console.log(`⌨️ Typing: "${word}"`);
+                await typeWordToGame(word);
+                // Brief gap so the game registers the completed word before the next arrives
+                await new Promise(r => setTimeout(r, 180 + Math.random() * 120));
+            } else if (isDirectMode && lessonWords.length > 0) {
+                // Queue exhausted in direct mode — reload and keep going
+                staleTicks = 0;
+                console.log('🔄 Reloading word list for next wave…');
+                for (const w of lessonWords) wordQueue.push(w); // reload for next wave
+            } else {
+                staleTicks++;
+                if (staleTicks >= MAX_STALE) {
+                    console.warn('⏳ Queue empty for ~30 s — assuming game complete');
+                    break;
+                }
+                await new Promise(r => setTimeout(r, TICK_MS));
+            }
+        }
+
+        // ── 8. Level complete ─────────────────────────────────────────────────────
+        unhook();
+        console.log(`✅ Game complete: ${gameName}`);
+        levelsCompleted++;
+        levelsCompletedEl.textContent = levelsCompleted;
+        status.textContent = '✅ Game complete!';
+
+        if (autoAdvance.checked) {
+            await new Promise(r => setTimeout(r, 4000));
+            const enterOpts = {
+                key: 'Enter', code: 'Enter', keyCode: 13, which: 13,
+                bubbles: true, cancelable: true, view: window
+            };
+            document.dispatchEvent(new KeyboardEvent('keydown', enterOpts));
+            document.dispatchEvent(new KeyboardEvent('keyup', enterOpts));
+            document.body.click();
+            document.querySelectorAll('button, .btn, [role="button"], div[onclick], a')
+                    .forEach(el => {
+                        if (el.offsetParent !== null && !el.closest('#typing-bot-gui')) el.click();
+                    });
+            await new Promise(r => setTimeout(r, 1000));
+            if (botRunning) processLevel();
+        } else {
+            stopBot();
+        }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+    // END PATCH
+    // ─────────────────────────────────────────────────────────────────────────
+
+
     async function processLevel() {
         if (!botRunning) return;
 
@@ -210,43 +577,12 @@
             return;
         }
 
+        // --- UPDATED: delegate all game handling to processTypingGame() ---
         if (level.type === 'game') {
-            console.log('🎮 Game detected, auto-playing...');
-            status.textContent = '🎮 Playing game...';
-            await new Promise(r => setTimeout(r, 2000));
-            const gameKeys = ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'KeyW', 'KeyA', 'KeyS', 'KeyD'];
-            
-            for (let i = 0; i < 50; i++) {
-                if (!botRunning) return;
-                const randomKey = gameKeys[Math.floor(Math.random() * gameKeys.length)];
-                const keyOpts = {
-                    key: randomKey.includes('Arrow') || randomKey.includes('Space') ? randomKey.replace('Arrow', '').replace('Key', '') : randomKey.replace('Key', '').toLowerCase(),
-                    code: randomKey,
-                    keyCode: randomKey === 'Space' ? 32 : randomKey.includes('Arrow') ? (randomKey === 'ArrowUp' ? 38 : randomKey === 'ArrowDown' ? 40 : randomKey === 'ArrowLeft' ? 37 : 39) : randomKey.charCodeAt(3),
-                    bubbles: true, cancelable: true, view: window
-                };
-                document.dispatchEvent(new KeyboardEvent('keydown', keyOpts));
-                document.dispatchEvent(new KeyboardEvent('keyup', keyOpts));
-                if (i % 5 === 0) {
-                    const x = Math.random() * window.innerWidth;
-                    const y = Math.random() * window.innerHeight;
-                    const el = document.elementFromPoint(x, y);
-                    if (el && !el.closest('#typing-bot-gui')) { el.click(); }
-                }
-                await new Promise(r => setTimeout(r, 100));
-            }
-            console.log('🎮 Game sequence complete');
-            status.textContent = '✅ Game complete!';
-            if (autoAdvance.checked) {
-                await new Promise(r => setTimeout(r, 6000));
-                document.body.click();
-                const clickables = document.querySelectorAll('button, .btn, [role="button"]');
-                clickables.forEach(el => { if (el.offsetParent !== null && !el.closest('#typing-bot-gui')) { el.click(); } });
-                await new Promise(r => setTimeout(r, 1000));
-                if (botRunning) processLevel();
-            } else { stopBot(); }
+            await processTypingGame(level.gameName || 'unknown');
             return;
         }
+        // --- END UPDATED ---
 
         const text = level.text;
         console.log('📝 Text:', text);
