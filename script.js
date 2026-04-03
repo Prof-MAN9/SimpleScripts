@@ -1,4 +1,5 @@
-// Script - AUTO START (v4 - Bug Fixes; advanced logic)
+// Typing Club Automator - AUTO START (v4.5 - FULL AUTOMATION)
+// Set WPM +10 than target speed
 (function() {
     'use strict';
     if (window.typingClubBot) {
@@ -36,17 +37,17 @@
         <div style="margin-bottom: 18px;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                 <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; opacity: 0.7;">Speed</label>
-                <span style="font-size: 14px; font-weight: 700; color: #a29bfe;"><span id="speed-value">50</span> WPM</span>
+                <span style="font-size: 14px; font-weight: 700; color: #a29bfe;"><span id="speed-value">70</span> WPM</span>
             </div>
-            <input type="range" id="speed-slider" min="20" max="190" value="50" style="width: 100%; cursor: pointer; accent-color: #667eea;">
+            <input type="range" id="speed-slider" min="30" max="190" value="70" style="width: 100%; cursor: pointer; accent-color: #667eea;">
         </div>
         
         <div style="margin-bottom: 18px;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                 <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; opacity: 0.7;">Accuracy</label>
-                <span style="font-size: 14px; font-weight: 700; color: #a29bfe;"><span id="accuracy-value">94</span>%</span>
+                <span style="font-size: 14px; font-weight: 700; color: #a29bfe;"><span id="accuracy-value">97</span>%</span>
             </div>
-            <input type="range" id="accuracy-slider" min="80" max="100" value="94" style="width: 100%; cursor: pointer; accent-color: #667eea;">
+            <input type="range" id="accuracy-slider" min="92" max="100" value="97" style="width: 100%; cursor: pointer; accent-color: #667eea;">
         </div>
         
         <div style="display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.03); padding: 12px; border-radius: 12px; margin-bottom: 15px;">
@@ -119,6 +120,16 @@
     document.addEventListener('mouseup', () => isDragging = false);
 
     function detectLevel() {
+        // Instruction / intro screen — check FIRST before any content detection.
+        // The instruction screen can contain boxed-char or typable elements in its
+        // DOM (hidden or from the previous lesson) that would be detected as typing
+        // content if this check came after the content checks.
+        const continueBtn = document.querySelector('.navbar-continue');
+        if (continueBtn && continueBtn.offsetParent !== null) {
+            levelInfo.textContent = 'Instruction screen';
+            return { text: null, type: 'instruction' };
+        }
+
         // Boxed typing activity — characters live in .boxed-char divs inside
         // .boxed-line rows.  &nbsp; entries are spaces; collect all in order.
         const boxedChars = document.querySelectorAll('.boxed-line .boxed-char');
@@ -152,15 +163,6 @@
             return { text, type: 'typing' };
         }
 
-        // Instruction / intro screen — appears between lessons and after games.
-        // Identified by the presence of a visible .navbar-continue ("Next") button
-        // or the #instruction container.  Press Enter to advance.
-        const continueBtn = document.querySelector('.navbar-continue');
-        if (continueBtn && continueBtn.offsetParent !== null) {
-            levelInfo.textContent = 'Instruction screen';
-            return { text: null, type: 'instruction' };
-        }
-
         // --- UPDATED: identify TypingClub typing games specifically via approuter ---
         try {
             const app = window.approuter?.lesson?.activity?.app;
@@ -172,7 +174,7 @@
         } catch (e) {}
 
         const gameContainer = document.querySelector('#game canvas, #game');
-        if (gameContainer) {
+        if (gameContainer && gameContainer.style.display !== 'none') {
             levelInfo.textContent = 'Game detected';
             return { text: null, type: 'game', gameName: 'unknown' };
         }
@@ -231,41 +233,62 @@
         field.dispatchEvent(new KeyboardEvent('keyup', opts));
     }
 
+    // Adjacent-key map for realistic typo generation.
+    // Each key lists its physical neighbours on a standard QWERTY layout.
+    // Used by the error-injection logic in processLevel so mistakes look human.
+    const ADJACENT_KEYS = {
+        a:['s','q','w','z'],    b:['v','g','h','n'],    c:['x','d','f','v'],
+        d:['s','e','r','f','c','x'], e:['w','r','d','s'], f:['d','r','t','g','v','c'],
+        g:['f','t','y','h','b','v'], h:['g','y','u','j','n','b'], i:['u','o','k','j'],
+        j:['h','u','i','k','m','n'], k:['j','i','o','l','m'],     l:['k','o','p',';'],
+        m:['n','j','k'],            n:['b','h','j','m'],           o:['i','p','l','k'],
+        p:['o','l',';','['],        q:['w','a'],                   r:['e','t','f','d'],
+        s:['a','w','e','d','x','z'], t:['r','y','g','f'],          u:['y','i','j','h'],
+        v:['c','f','g','b'],        w:['q','e','s','a'],           x:['z','s','d','c'],
+        y:['t','u','h','g'],        z:['a','s','x'],
+        '1':['2','q'],  '2':['1','3','q','w'],  '3':['2','4','w','e'],
+        '4':['3','5','e','r'],  '5':['4','6','r','t'],  '6':['5','7','t','y'],
+        '7':['6','8','y','u'],  '8':['7','9','u','i'],  '9':['8','0','i','o'],
+        '0':['9','p','o'],
+        ',':['m','l','.'],  '.':['l',',','/'],  '/':['.',';','l'],
+        ';':['l',"'",'p','/'],    "'":[';','[','p'],
+    };
+
+    function getAdjacentTypo(char) {
+        const key = char.toLowerCase();
+        const neighbors = ADJACENT_KEYS[key];
+        if (!neighbors || neighbors.length === 0) return null;
+        const pick = neighbors[Math.floor(Math.random() * neighbors.length)];
+        // Preserve case: if original was uppercase, return uppercase typo
+        return char !== char.toLowerCase() ? pick.toUpperCase() : pick;
+    }
+
+
     // --- PATCHED: Type a single word into the game ---
     //
-    // Games and activities use a lower WPM (≈ slider×0.65) and higher error
-    // rate (slider accuracy − 6pp, floored at 80%) to look more natural under
-    // the pressure/distraction of a game environment.
+    // Complete TypingCore input chain (typing_core.js, confirmed):
     //
-    // Key-adjacency map is defined in the normal typing loop; duplicated here
-    // so typeWordToGame is self-contained.
+    //   TypingCore.init_keyboard_focus() creates a hidden <input> and prepends
+    //   it to <body>.  attach_capture() binds three jQuery handlers TO THAT INPUT:
+    //
+    //     $focusInput.keydown  → _input_handler_keydown → this.keyDown = e.keyCode
+    //     $focusInput.input    → _input_handler          → key = $focusInput.val()
+    //                                                       record_keydown_time(key)
+    //                                                       $focusInput.val('')   ← clears
+    //     $focusInput.keyup    → _input_handler_keyup    → this.prev_key = null
+    //
+    //   record_keydown_time is monkey-patched by GameWordManager, which buffers
+    //   chars, matches them against active word char_lists, and fires
+    //   core.events("keydown", {is_valid, chr}) that the Phaser game listens to.
+    //
+    //   Fallback (iOS / no_input_mode):
+    //     $(document).keypress → _keypress_handler → record_keydown_time(e.key)
+    //
+    //   Bonus: TypingCore.idkfa() calls record_keydown_time() directly for each
+    //   char. If the core is reachable we call that instead of synthesising events.
     //
     async function typeWordToGame(word) {
-        const GAME_KEY_NEIGHBORS = {
-            q:['w','a','s'],      w:['q','e','a','s','d'],   e:['w','r','s','d','f'],
-            r:['e','t','d','f','g'], t:['r','y','f','g','h'], y:['t','u','g','h','j'],
-            u:['y','i','h','j','k'], i:['u','o','j','k','l'], o:['i','p','k','l'],
-            p:['o','l'],
-            a:['q','w','s','z'],  s:['a','d','w','e','x','z'], d:['s','f','e','r','x','c'],
-            f:['d','g','r','t','c','v'], g:['f','h','t','y','v','b'], h:['g','j','y','u','b','n'],
-            j:['h','k','u','i','n','m'], k:['j','l','i','o','m'],     l:['k','p','o'],
-            z:['a','s','x'],      x:['z','c','s','d'],        c:['x','v','d','f'],
-            v:['c','b','f','g'],  b:['v','n','g','h'],        n:['b','m','h','j'],
-            m:['n','j','k'],
-        };
-        function gameAdjacentTypo(ch) {
-            const key = ch.toLowerCase();
-            const nb = GAME_KEY_NEIGHBORS[key];
-            if (!nb || !nb.length) return null;
-            const p = nb[Math.floor(Math.random() * nb.length)];
-            return ch === ch.toUpperCase() ? p.toUpperCase() : p;
-        }
-
-        // Game WPM is 65% of the slider value, minimum 20
-        const wpm       = Math.max(20, Math.round(parseInt(speedSlider.value) * 0.65));
-        // Game error rate is 6pp higher than slider accuracy, minimum 80%
-        const accuracy  = Math.max(80, parseInt(accuracySlider.value) - 6);
-        const errorChance = (100 - accuracy) / 100;
+        const wpm       = parseInt(speedSlider.value);
         const baseDelay = 60000 / (wpm * 5);
 
         // ── Path A: idkfa() — calls record_keydown_time directly on the core ────
@@ -274,15 +297,18 @@
         // The core is at this.core inside the Phaser MainState. In DEV_MODE
         // games expose window.game; otherwise we can still find the core via the
         // hidden input's jQuery data that TypingCore stores on the element.
-        const tryIdkfa = () => {
+        // tryIdkfa is only available in DEV_MODE (Game.DEV_MODE = true exposes window.game).
+        // Production builds never set this flag, so this path is a no-op at runtime.
+        const tryIdkfa = async () => {
             try {
-                // DEV_MODE path
                 const g = window.game;
                 if (g?.state) {
                     const st = g.state.states[g.state.current];
                     if (typeof st?.core?.record_keydown_time === 'function') {
                         for (const char of word) {
                             st.core.record_keydown_time(char);
+                            // Apply same per-character delay as the other paths
+                            await new Promise(r => setTimeout(r, baseDelay * (0.8 + Math.random() * 0.4)));
                         }
                         return true;
                     }
@@ -291,7 +317,7 @@
             return false;
         };
 
-        if (tryIdkfa()) {
+        if (await tryIdkfa()) {
             charsTypedCount += word.length;
             charsTypedEl.textContent = charsTypedCount;
             return true;
@@ -312,32 +338,6 @@
 
                 const upper   = char.toUpperCase();
                 const keyCode = /[a-zA-Z]/.test(char) ? upper.charCodeAt(0) : char.charCodeAt(0);
-
-                // ── Adjacent-key error injection ──────────────────────────────
-                if (/[a-zA-Z]/.test(char) && Math.random() < errorChance) {
-                    const typo = gameAdjacentTypo(char);
-                    if (typo) {
-                        const typoCode = typo.toUpperCase().charCodeAt(0);
-                        const typoOpts = { key: typo, code: `Key${typo.toUpperCase()}`,
-                            keyCode: typoCode, which: typoCode, bubbles: true,
-                            cancelable: true, composed: true, view: window };
-                        focusInput.dispatchEvent(new KeyboardEvent('keydown', typoOpts));
-                        focusInput.value = typo;
-                        focusInput.dispatchEvent(new Event('input', { bubbles: true }));
-                        focusInput.dispatchEvent(new KeyboardEvent('keyup', typoOpts));
-                        charsTypedCount++;
-                        charsTypedEl.textContent = charsTypedCount;
-                        await new Promise(r => setTimeout(r, baseDelay * (0.5 + Math.random() * 0.3)));
-                        // Correct immediately with Backspace
-                        const bsOpts = { key:'Backspace', code:'Backspace', keyCode:8, which:8,
-                                         bubbles:true, cancelable:true, view:window };
-                        focusInput.dispatchEvent(new KeyboardEvent('keydown', bsOpts));
-                        focusInput.value = '';
-                        focusInput.dispatchEvent(new Event('input',  { bubbles:true }));
-                        focusInput.dispatchEvent(new KeyboardEvent('keyup', bsOpts));
-                        await new Promise(r => setTimeout(r, 100 + Math.random() * 120));
-                    }
-                }
 
                 const keyOpts = {
                     key:        char,
@@ -364,7 +364,7 @@
 
                 charsTypedCount++;
                 charsTypedEl.textContent = charsTypedCount;
-                await new Promise(r => setTimeout(r, baseDelay * (0.75 + Math.random() * 0.5)));
+                await new Promise(r => setTimeout(r, baseDelay * (0.8 + Math.random() * 0.4)));
             }
             return true;
         }
@@ -387,7 +387,7 @@
             }));
             charsTypedCount++;
             charsTypedEl.textContent = charsTypedCount;
-            await new Promise(r => setTimeout(r, baseDelay * (0.75 + Math.random() * 0.5)));
+            await new Promise(r => setTimeout(r, baseDelay * (0.8 + Math.random() * 0.4)));
         }
         return true;
     }
@@ -482,9 +482,17 @@
         // every time its text property is updated.  Patching the prototype here
         // catches all 2D contexts — including ones already created — because
         // prototype lookup happens at call time, not at object creation time.
+        //
+        // Dedup design for multi-target games (FloatingBubbles, AppleThieves):
+        //   Phaser re-renders Text objects every frame at 60 fps.  A bubble that
+        //   stays on screen for 5 s generates ~300 fillText calls for the same word.
+        //   DEDUP_MS = 3500 ms means each word can only enter the queue ONCE per
+        //   3.5 seconds.  After the bot types a word successfully it immediately
+        //   refreshes recentSeen for that word, resetting the 3.5 s window and
+        //   preventing the queue from filling with stale duplicates.
         const wordQueue  = [];
         const recentSeen = new Map();
-        const DEDUP_MS   = 250;    // collapse shadow + fill passes of the same word
+        const DEDUP_MS   = 3500;   // one queue entry per word per 3.5 s
         const WORD_RE    = /^[a-zA-Z']{1,30}$/;
 
         const origFillText = CanvasRenderingContext2D.prototype.fillText;
@@ -529,6 +537,24 @@
 
         // Allow the game's preload → create cycle to finish so first words render
         await new Promise(r => setTimeout(r, 800));
+
+        // Press SPACEBAR to start the game.
+        // All TypingClub Phaser games sit on a "Hit SPACE to begin" screen until
+        // spacebar fires — without it gameState.started stays false and no words
+        // or monsters ever spawn.  Dispatching to document bubbles through to the
+        // Phaser.Keyboard handler that listens on window.
+        const spaceOpts = {
+            key: ' ', code: 'Space', keyCode: 32, which: 32,
+            bubbles: true, cancelable: true, view: window
+        };
+        document.dispatchEvent(new KeyboardEvent('keydown', spaceOpts));
+        document.dispatchEvent(new KeyboardEvent('keyup',   spaceOpts));
+        console.log('⎵ Spacebar sent — waiting for first words to spawn…');
+
+        // Wait for the initial monsters/bubbles to spawn and render
+        // (Apple Thieves spawns the first two at t=100ms and t=500ms)
+        await new Promise(r => setTimeout(r, 700));
+
         status.textContent = `🎮 ${gameName} — detecting words…`;
         console.log('✅ Canvas ready — probing fillText hook for 3 s…');
 
@@ -539,6 +565,9 @@
         }
 
         // ── 6. Tier-2 fallback if fillText captured nothing ───────────────────────
+        let directWordIndex = 0;     // cursor into lessonWords for one-at-a-time feeding
+        let isDirectMode    = false;
+
         if (wordQueue.length === 0) {
             if (lessonWords.length === 0) {
                 unhook();
@@ -547,21 +576,21 @@
                 stopBot();
                 return;
             }
-            // Game uses BitmapText (or hook missed the window).
-            // Seed the queue with lesson words in their native order.
-            // The game accepts each word that matches a live target and ignores others.
-            console.log(`ℹ️ fillText inactive — direct lesson-word mode (${lessonWords.length} words)`);
+            // Game uses BitmapText (or hook missed the probe window).
+            // Feed words ONE AT A TIME rather than bulk-seeding the entire lesson.
+            // Multi-target games (FloatingBubbles, AppleThieves) have at most
+            // 2 words on screen simultaneously; bulk-seeding causes the bot to
+            // attempt word 10 while only words 1-2 are active, which CoreWords
+            // silently ignores, leaving all later bubbles un-popped.
+            isDirectMode = true;
+            console.log(`ℹ️ fillText inactive — direct one-at-a-time mode (${lessonWords.length} words)`);
             status.textContent = `📝 Direct mode: ${lessonWords.length} words`;
-            for (const w of lessonWords) wordQueue.push(w); // no trailing space — GameWordManager matches exact chars
+            // Seed the first two words to fill the initial 2-bubble spawn
+            wordQueue.push(lessonWords[directWordIndex++] || '');
+            if (lessonWords[directWordIndex]) wordQueue.push(lessonWords[directWordIndex++]);
         }
 
         // ── 7. Main typing loop ───────────────────────────────────────────────────
-        // In direct mode the game keeps spawning monsters/bubbles throughout its
-        // full duration, so we cycle the word list continuously rather than
-        // stopping after one pass.  fillText mode drains naturally as the game
-        // queues new words itself.
-        const isDirectMode = wordQueue.length > 0 && lessonWords.length > 0
-                          && wordQueue[0] === lessonWords[0];  // seeded from lesson list
         let staleTicks = 0;
         const TICK_MS   = 100;
         const MAX_STALE = 300;   // 300 × 100 ms ≈ 30 s
@@ -572,16 +601,27 @@
             if (wordQueue.length > 0) {
                 staleTicks = 0;
                 const word = wordQueue.shift();
+
+                // Typing succeeded — immediately refresh recentSeen for this word.
+                // This resets the 3.5 s dedup clock so the next bubble carrying the
+                // same word isn't suppressed (fillText mode).
+                recentSeen.set(word.toLowerCase(), Date.now());
+
                 status.textContent = `⌨️ "${word}"`;
                 console.log(`⌨️ Typing: "${word}"`);
                 await typeWordToGame(word);
                 // Brief gap so the game registers the completed word before the next arrives
                 await new Promise(r => setTimeout(r, 180 + Math.random() * 120));
-            } else if (isDirectMode && lessonWords.length > 0) {
-                // Queue exhausted in direct mode — reload and keep going
-                staleTicks = 0;
-                console.log('🔄 Reloading word list for next wave…');
-                for (const w of lessonWords) wordQueue.push(w); // reload for next wave
+
+                // Direct mode: feed the next word as soon as the previous one is typed
+                if (isDirectMode && directWordIndex < lessonWords.length) {
+                    wordQueue.push(lessonWords[directWordIndex++]);
+                } else if (isDirectMode && directWordIndex >= lessonWords.length) {
+                    // All lesson words sent — restart from beginning for looping games
+                    directWordIndex = 0;
+                    console.log('🔄 Direct mode: restarting word list for next wave…');
+                    wordQueue.push(lessonWords[directWordIndex++]);
+                }
             } else {
                 staleTicks++;
                 if (staleTicks >= MAX_STALE) {
@@ -670,10 +710,14 @@
         document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', keyCode: 32, bubbles: true }));
         await new Promise(r => setTimeout(r, 500));
 
+        // Target the TypingCore focus input specifically.
+        // It is identified by aria-hidden="true" (set in TypingCore.init_keyboard_focus).
+        // Using the generic 'input[type="text"]' selector could match other page
+        // inputs (search boxes, forms) and send keystrokes to the wrong element.
         let input = null;
         for (let attempt = 0; attempt < 30; attempt++) {
-            const allInputs = document.querySelectorAll('input[type="text"]');
-            for (const inp of allInputs) { if (inp.type === 'text') { input = inp; break; } }
+            input = document.querySelector("body > input[type='text'][aria-hidden='true']")
+                 || document.querySelector("input[type='text'][aria-hidden='true']");
             if (input) break;
             await new Promise(r => setTimeout(r, 100));
         }
@@ -688,194 +732,51 @@
         console.log('🚀 Typing... did you know that Prof_MAN modified this!!!!!!!!!');
         input.value = '';
         input.focus();
+        await new Promise(r => setTimeout(r, 100));
 
-        // ── Human-typing model ────────────────────────────────────────────────
-        //
-        // Key-adjacency map for realistic typo selection.
-        // Each entry lists the physically neighbouring keys on a QWERTY layout.
-        const KEY_NEIGHBORS = {
-            q:['w','a','s'],      w:['q','e','a','s','d'],   e:['w','r','s','d','f'],
-            r:['e','t','d','f','g'], t:['r','y','f','g','h'], y:['t','u','g','h','j'],
-            u:['y','i','h','j','k'], i:['u','o','j','k','l'], o:['i','p','k','l'],
-            p:['o','l'],
-            a:['q','w','s','z'],  s:['a','d','w','e','x','z'], d:['s','f','e','r','x','c'],
-            f:['d','g','r','t','c','v'], g:['f','h','t','y','v','b'], h:['g','j','y','u','b','n'],
-            j:['h','k','u','i','n','m'], k:['j','l','i','o','m'],     l:['k','p','o'],
-            z:['a','s','x'],      x:['z','c','s','d'],        c:['x','v','d','f'],
-            v:['c','b','f','g'],  b:['v','n','g','h'],        n:['b','m','h','j'],
-            m:['n','j','k'],
-            '1':['2','q'],  '2':['1','3','w'],  '3':['2','4','e'],  '4':['3','5','r'],
-            '5':['4','6','t'],  '6':['5','7','y'],  '7':['6','8','u'],  '8':['7','9','i'],
-            '9':['8','0','o'],  '0':['9','p'],
-        };
-
-        // Home-row distance cost (extra ms per step away from home row).
-        // Home row = a-l  (cost 0).  Top row = q-p  (cost 1).
-        // Bottom row = z-m (cost 1).  Number row (cost 2).
-        function homeRowCost(ch) {
-            const c = ch.toLowerCase();
-            if ('asdfghjkl'.includes(c))   return 0;
-            if ('qwertyuiop'.includes(c))  return 1;
-            if ('zxcvbnm'.includes(c))     return 1;
-            if ('1234567890'.includes(c))  return 2;
-            return 0.5;
-        }
-
-        // Pick a realistic adjacent-key typo for a character.
-        function adjacentTypo(ch) {
-            const key = ch.toLowerCase();
-            const neighbors = KEY_NEIGHBORS[key];
-            if (!neighbors || neighbors.length === 0) return null;
-            const pick = neighbors[Math.floor(Math.random() * neighbors.length)];
-            // Preserve original case
-            return ch === ch.toUpperCase() ? pick.toUpperCase() : pick;
-        }
-
-        const targetWpm  = parseInt(speedSlider.value);
-        const accuracy   = parseInt(accuracySlider.value);
-
-        // Actual WPM floats around target with ±8 WPM std-dev (re-sampled per char cluster).
-        let sessionWpm   = targetWpm;
-        let sessionResampleIn = 0;
-
-        // Fatigue: speed decreases ~4% per minute of typing.
-        const sessionStartTime = Date.now();
-
-        // Post-error caution: slow down for N chars after a mistake.
-        let cautionCharsLeft  = 0;
-
-        // Warm-up: first 12 chars are slower.
-        let warmupCharsLeft   = 12;
-
-        // Pending delayed-detection backspace:
-        // sometimes the bot "notices" a mistake 1-3 chars late.
-        let pendingBackspaceAt = -1;  // char index at which to correct
-
+        const wpm = parseInt(speedSlider.value);
+        const accuracy = parseInt(accuracySlider.value);
+        const baseDelay = 60000 / (wpm * 5);
         status.textContent = `⌨️ Typing...`;
 
-        // Start delay — simulate the user reading the first word.
-        await new Promise(r => setTimeout(r, 250 + Math.random() * 400));
+        let burstMultiplier = 1.0;
+        let burstCharsLeft = 0;
 
         for (let i = 0; i < text.length; i++) {
             if (!botRunning) return;
-
-            // ── Resample session WPM every 15-25 chars ──────────────────────
-            if (sessionResampleIn <= 0) {
-                const drift = (Math.random() - 0.5) * 16;   // ±8 WPM
-                sessionWpm = Math.max(20, targetWpm + drift);
-                sessionResampleIn = 15 + Math.floor(Math.random() * 10);
+            if (burstCharsLeft <= 0) {
+                const roll = Math.random();
+                if (roll < 0.35) { burstMultiplier = 0.5 + Math.random() * 0.3; } 
+                else if (roll < 0.65) { burstMultiplier = 0.9 + Math.random() * 0.2; } 
+                else { burstMultiplier = 1.2 + Math.random() * 0.7; }
+                burstCharsLeft = 3 + Math.floor(Math.random() * 8);
             }
-            sessionResampleIn--;
+            burstCharsLeft--;
 
-            // ── Fatigue: -4% per minute ──────────────────────────────────────
-            const elapsedMin = (Date.now() - sessionStartTime) / 60000;
-            const fatigueMultiplier = 1 + elapsedMin * 0.04;
-
-            // ── Base delay from current effective WPM ────────────────────────
-            const effectiveWpm = sessionWpm / fatigueMultiplier;
-            let baseDelay = 60000 / (effectiveWpm * 5);
-
-            // ── Warm-up: first 12 chars 35% slower ──────────────────────────
-            if (warmupCharsLeft > 0) {
-                baseDelay *= 1.35;
-                warmupCharsLeft--;
-            }
-
-            // ── Post-error caution: 25% slower ──────────────────────────────
-            if (cautionCharsLeft > 0) {
-                baseDelay *= 1.25;
-                cautionCharsLeft--;
-            }
-
-            // ── Finger travel time (home-row distance) ───────────────────────
             const char = text[i];
-            baseDelay += homeRowCost(char) * 18;
-
-            // ── Burst multiplier (sprint/pause rhythm) ───────────────────────
-            const burstRoll = Math.random();
-            let burstMult;
-            if      (burstRoll < 0.30) burstMult = 0.55 + Math.random() * 0.25;  // sprint
-            else if (burstRoll < 0.65) burstMult = 0.90 + Math.random() * 0.20;  // normal
-            else                       burstMult = 1.20 + Math.random() * 0.60;  // slow
-
-            // ── Thinking pause: 3% chance of a 300-700ms gap ────────────────
-            if (Math.random() < 0.03) {
-                await new Promise(r => setTimeout(r, 300 + Math.random() * 400));
+            const shouldError = Math.random() * 100 > accuracy;
+            
+            const typo = (shouldError && /[a-zA-Z0-9,.\/;']/.test(char)) ? getAdjacentTypo(char) : null;
+            if (typo) {
+                typeChar(typo, input);
+                await new Promise(r => setTimeout(r, baseDelay * 0.5));
+                const backspaceOpts = { key: 'Backspace', code: 'Backspace', keyCode: 8, which: 8, bubbles: true, cancelable: true, view: window };
+                input.dispatchEvent(new KeyboardEvent('keydown', backspaceOpts));
+                input.dispatchEvent(new KeyboardEvent('keypress', backspaceOpts));
+                input.value = input.value.slice(0, -1);
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+                input.dispatchEvent(new KeyboardEvent('keyup', backspaceOpts));
+                await new Promise(r => setTimeout(r, 300));
             }
-
-            // ── Delayed-detection correction ─────────────────────────────────
-            if (i === pendingBackspaceAt) {
-                pendingBackspaceAt = -1;
-                const stepsBack = 1 + Math.floor(Math.random() * 2);
-                for (let b = 0; b < stepsBack; b++) {
-                    const bsOpts = { key:'Backspace', code:'Backspace', keyCode:8, which:8,
-                                     bubbles:true, cancelable:true, view:window };
-                    input.dispatchEvent(new KeyboardEvent('keydown',  bsOpts));
-                    input.dispatchEvent(new KeyboardEvent('keypress', bsOpts));
-                    input.value = input.value.slice(0, -1);
-                    input.dispatchEvent(new Event('input',  { bubbles:true }));
-                    input.dispatchEvent(new Event('change', { bubbles:true }));
-                    input.dispatchEvent(new KeyboardEvent('keyup', bsOpts));
-                    await new Promise(r => setTimeout(r, baseDelay * 0.9));
-                }
-                // Re-type the chars we deleted (simplified: retype current char only)
-                await new Promise(r => setTimeout(r, 150 + Math.random() * 100));
-            }
-
-            // ── Error injection ──────────────────────────────────────────────
-            const errorChance = (100 - accuracy) / 100;
-            const shouldError = Math.random() < errorChance;
-
-            if (shouldError && /[a-zA-Z0-9]/.test(char)) {
-                const typo = adjacentTypo(char);
-                if (typo) {
-                    typeChar(typo, input);
-                    charsTypedCount++;
-                    charsTypedEl.textContent = charsTypedCount;
-                    await new Promise(r => setTimeout(r, baseDelay * (0.4 + Math.random() * 0.3)));
-
-                    // 25% chance: notice the mistake 1-2 chars later instead of immediately
-                    if (Math.random() < 0.25 && i + 2 < text.length) {
-                        pendingBackspaceAt = i + 1 + Math.floor(Math.random() * 2);
-                        // Type the correct char now and carry on; correction comes later
-                    } else {
-                        // Immediate correction
-                        const bsOpts = { key:'Backspace', code:'Backspace', keyCode:8, which:8,
-                                         bubbles:true, cancelable:true, view:window };
-                        await new Promise(r => setTimeout(r, 80 + Math.random() * 120));
-                        input.dispatchEvent(new KeyboardEvent('keydown',  bsOpts));
-                        input.dispatchEvent(new KeyboardEvent('keypress', bsOpts));
-                        input.value = input.value.slice(0, -1);
-                        input.dispatchEvent(new Event('input',  { bubbles:true }));
-                        input.dispatchEvent(new Event('change', { bubbles:true }));
-                        input.dispatchEvent(new KeyboardEvent('keyup', bsOpts));
-                        await new Promise(r => setTimeout(r, 150 + Math.random() * 150));
-                    }
-                    cautionCharsLeft = 3 + Math.floor(Math.random() * 3);
-                }
-            }
-
+            
             typeChar(char, input);
             charsTypedCount++;
             charsTypedEl.textContent = charsTypedCount;
-
-            // ── Per-character delay ───────────────────────────────────────────
-            let delay = baseDelay * burstMult * (0.75 + Math.random() * 0.5);
-
-            // Punctuation pauses
-            if (['.', '!', '?'].includes(char))       delay *= 2.2;
-            else if ([',', ';', ':'].includes(char))  delay *= 1.6;
-            else if (char === '\n')                  delay *= 2.5;
-            // Inter-word pause
-            else if (char === ' ') {
-                delay *= 1.4;
-                // Extra pause before a new sentence (next char is uppercase)
-                const next = text[i + 1];
-                if (next && next === next.toUpperCase() && /[A-Z]/.test(next)) {
-                    delay += 60 + Math.random() * 80;
-                }
-            }
-
+            
+            let delay = baseDelay * burstMultiplier * (0.8 + Math.random() * 0.4);
+            if (['.', '!', '?'].includes(char)) delay *= 2;
+            else if (char === ' ') delay *= 1.3;
             await new Promise(r => setTimeout(r, delay));
         }
 
@@ -913,6 +814,7 @@
     function startBot() {
         botRunning = true;
         startBtn.disabled = true;
+        startBtn.style.opacity = '0.5';
         stopBtn.disabled = false;
         stopBtn.style.opacity = '1';
         console.log('🤖 Bot started');
@@ -922,6 +824,7 @@
     function stopBot() {
         botRunning = false;
         startBtn.disabled = false;
+        startBtn.style.opacity = '1';
         stopBtn.disabled = true;
         stopBtn.style.opacity = '0.5';
         status.textContent = '⏹ Stopped';
