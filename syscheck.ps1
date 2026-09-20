@@ -81,6 +81,9 @@ param(
     [switch]$Help
 )
 
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'SilentlyContinue'
 
@@ -792,7 +795,7 @@ function Invoke-SectionNetwork {
         $line = '  {0,-22} {1,-12} {2,-20} {3,-28} {4,-10} {5,-10}' -f `
             ($a.Name.Substring(0, [Math]::Min(21, $a.Name.Length))),
             $a.Status,
-            ($ipv4 ?? '-'), ($ipv6 ?? '-'), $sent, $recv
+            (if ([string]::IsNullOrEmpty($ipv4)) { '-' } else { $ipv4 }), (if ([string]::IsNullOrEmpty($ipv6)) { '-' } else { $ipv6 }), $sent, $recv
 
         $script:ReportLines.Add($line)
         if (-not $Json -and -not $Diagnose) {
@@ -800,7 +803,7 @@ function Invoke-SectionNetwork {
             else {
                 Write-Host ('  {0,-22} ' -f $a.Name.Substring(0, [Math]::Min(21, $a.Name.Length))) -NoNewline
                 Write-Host ('{0,-12} ' -f $a.Status) -ForegroundColor (Get-LevelColor $stateLevel) -NoNewline
-                Write-Host ('{0,-20} {1,-28} {2,-10} {3,-10}' -f ($ipv4 ?? '-'), ($ipv6 ?? '-'), $sent, $recv)
+                Write-Host ('{0,-20} {1,-28} {2,-10} {3,-10}' -f (if ([string]::IsNullOrEmpty($ipv4)) { '-' } else { $ipv4 }), (if ([string]::IsNullOrEmpty($ipv6)) { '-' } else { $ipv6 }), $sent, $recv)
             }
         }
 
@@ -816,7 +819,7 @@ function Invoke-SectionNetwork {
     Write-KV 'DNS servers'     ($dnsServers -join ', ')
     $gw = (Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue |
            Sort-Object RouteMetric | Select-Object -First 1).NextHop
-    Write-KV 'Default gateway' ($gw ?? '(none)')
+    Write-KV 'Default gateway' (if ([string]::IsNullOrEmpty($gw)) { '(none)' } else { $gw })
 
     # APIPA detection
     $apipaAddresses = Get-NetIPAddress -ErrorAction SilentlyContinue |
@@ -1461,12 +1464,12 @@ function Invoke-SectionSecurity {
         $avEnabled = $mpStatus.AntivirusEnabled
         $rtEnabled = $mpStatus.RealTimeProtectionEnabled
         $sigAge    = ((Get-Date) - $mpStatus.AntivirusSignatureLastUpdated).Days
-        Write-KV '  Antivirus enabled'    ($avEnabled ? 'Yes' : 'No')  ($avEnabled ? 'ok' : 'crit')
-        Write-KV '  Real-time protection' ($rtEnabled ? 'Yes' : 'No')  ($rtEnabled ? 'ok' : 'crit')
+        Write-KV '  Antivirus enabled'    (if ($avEnabled) { 'Yes' } else { 'No' })  (if ($avEnabled) { 'ok' } else { 'crit' })
+        Write-KV '  Real-time protection' (if ($rtEnabled) { 'Yes' } else { 'No' })  (if ($rtEnabled) { 'ok' } else { 'crit' })
         Write-KV '  Signature age (days)' $sigAge                      (Get-Threshold $sigAge 3 7)
         Write-KV '  Last scan type'       $mpStatus.LastFullScanSource
-        Write-KV '  Last quick scan'      ($mpStatus.QuickScanStartTime ? $mpStatus.QuickScanStartTime.ToString('yyyy-MM-dd') : 'Never')
-        Write-KV '  Last full scan'       ($mpStatus.FullScanStartTime  ? $mpStatus.FullScanStartTime.ToString('yyyy-MM-dd')  : 'Never')
+        Write-KV '  Last quick scan'      (if ($mpStatus.QuickScanStartTime) { $mpStatus.QuickScanStartTime.ToString('yyyy-MM-dd') } else { 'Never' })
+        Write-KV '  Last full scan'       (if ($mpStatus.FullScanStartTime)  { $mpStatus.FullScanStartTime.ToString('yyyy-MM-dd')  } else { 'Never' })
 
         if (-not $avEnabled)  { Add-Issue -Level 'crit' -Category 'Security' -Message 'Windows Defender antivirus is DISABLED.' -ScorePenalty 30 }
         if (-not $rtEnabled)  { Add-Issue -Level 'crit' -Category 'Security' -Message 'Windows Defender real-time protection is DISABLED.' -ScorePenalty 30 }
@@ -1487,7 +1490,7 @@ function Invoke-SectionSecurity {
         $fwProfiles = Get-NetFirewallProfile -ErrorAction Stop
         foreach ($fp in $fwProfiles) {
             $fl = if ($fp.Enabled) { 'ok' } else { 'crit' }
-            Write-KV "  $($fp.Name)" ($fp.Enabled ? 'Enabled ✓' : 'DISABLED ✗') $fl
+            Write-KV "  $($fp.Name)" (if ($fp.Enabled) { 'Enabled ✓' } else { 'DISABLED ✗' }) $fl
             if (-not $fp.Enabled) {
                 Add-Issue -Level 'crit' -Category 'Security' -Message "Firewall profile '$($fp.Name)' is DISABLED." -ScorePenalty 20
             }
@@ -1499,14 +1502,14 @@ function Invoke-SectionSecurity {
     try {
         $uac = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' `
                 -Name 'EnableLUA' -ErrorAction Stop).EnableLUA
-        Write-KV 'UAC (EnableLUA)' ($uac -eq 1 ? 'Enabled ✓' : 'DISABLED ✗') ($uac -eq 1 ? 'ok' : 'crit')
+        Write-KV 'UAC (EnableLUA)' (if ($uac -eq 1) { 'Enabled ✓' } else { 'DISABLED ✗' }) (if ($uac -eq 1) { 'ok' } else { 'crit' })
         if ($uac -ne 1) { Add-Issue -Level 'crit' -Category 'Security' -Message 'UAC is disabled.' -ScorePenalty 20 }
     } catch { Write-KV 'UAC' 'unable to read registry' }
 
     # Secure Boot
     try {
         $sb = Confirm-SecureBootUEFI -ErrorAction Stop
-        Write-KV 'Secure Boot' ($sb ? 'Enabled ✓' : 'Disabled') ($sb ? 'ok' : 'warn')
+        Write-KV 'Secure Boot' (if ($sb) { 'Enabled ✓' } else { 'Disabled' }) (if ($sb) { 'ok' } else { 'warn' })
         if (-not $sb) { Add-Issue -Level 'warn' -Category 'Security' -Message 'Secure Boot is disabled.' -ScorePenalty 10 }
     } catch { Write-KV 'Secure Boot' 'N/A (Legacy BIOS)' 'dim' }
 
@@ -1584,7 +1587,7 @@ function Invoke-SectionSecurity {
     Write-Line ''
     try {
         $smbv1 = Get-SmbServerConfiguration -ErrorAction Stop | Select-Object -ExpandProperty EnableSMB1Protocol
-        Write-KV 'SMBv1 protocol' ($smbv1 ? 'ENABLED (security risk)' : 'Disabled ✓') ($smbv1 ? 'crit' : 'ok')
+        Write-KV 'SMBv1 protocol' (if ($smbv1) { 'ENABLED (security risk)' } else { 'Disabled ✓' }) (if ($smbv1) { 'crit' } else { 'ok' })
         if ($smbv1) { Add-Issue -Level 'crit' -Category 'Security' -Message 'SMBv1 is enabled — this is a known attack vector (EternalBlue/WannaCry).' -ScorePenalty 20 }
     } catch { }
 
@@ -1592,7 +1595,7 @@ function Invoke-SectionSecurity {
     try {
         $rdpEnabled = (Get-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
                        -Name 'fDenyTSConnections' -ErrorAction Stop).fDenyTSConnections -eq 0
-        Write-KV 'Remote Desktop (RDP)' ($rdpEnabled ? 'Enabled' : 'Disabled') ($rdpEnabled ? 'info' : 'ok')
+        Write-KV 'Remote Desktop (RDP)' (if ($rdpEnabled) { 'Enabled' } else { 'Disabled' }) (if ($rdpEnabled) { 'info' } else { 'ok' })
     } catch { }
 
     Add-JsonKey 'uac_enabled' ($uac -eq 1)
@@ -1962,7 +1965,7 @@ function Invoke-SectionVirtualization {
     $cs       = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue
     $hvPresent= $cs.HypervisorPresent
 
-    Write-KV 'Hypervisor present'  ($hvPresent ? 'Yes' : 'No') $(if ($hvPresent) {'warn'} else {'ok'})
+    Write-KV 'Hypervisor present'  (if ($hvPresent) { 'Yes' } else { 'No' }) $(if ($hvPresent) {'warn'} else {'ok'})
     Write-KV 'System type'        $cs.SystemType
     Write-KV 'PC system type'     $(switch ($cs.PCSystemType) {
         1 {'Desktop'} 2 {'Mobile/Laptop'} 3 {'Workstation'} 4 {'Enterprise Server'}
@@ -2049,11 +2052,11 @@ function Invoke-SectionTime {
     try {
         $w32status = w32tm /query /status 2>$null
         if ($w32status) {
-            $leapIndicator = ($w32status | Select-String 'Leap Indicator')?.Line
-            $stratum       = ($w32status | Select-String 'Stratum')?.Line
-            $sourceStr     = ($w32status | Select-String 'Source')?.Line
-            $lastSync      = ($w32status | Select-String 'Last Successful Sync')?.Line
-            $offset        = ($w32status | Select-String 'Phase Offset')?.Line
+            $leapIndicator = $(  $r = $w32status | Select-String 'Leap Indicator';       if ($r) { $r.Line } else { $null }  )
+            $stratum       = $(  $r = $w32status | Select-String 'Stratum';              if ($r) { $r.Line } else { $null }  )
+            $sourceStr     = $(  $r = $w32status | Select-String 'Source';               if ($r) { $r.Line } else { $null }  )
+            $lastSync      = $(  $r = $w32status | Select-String 'Last Successful Sync'; if ($r) { $r.Line } else { $null }  )
+            $offset        = $(  $r = $w32status | Select-String 'Phase Offset';         if ($r) { $r.Line } else { $null }  )
 
             if ($stratum)   { Write-KV '  Stratum'         ($stratum  -replace '.*:\s*','').Trim() }
             if ($sourceStr) { Write-KV '  Source'          ($sourceStr -replace '.*:\s*','').Trim() }
@@ -2553,7 +2556,7 @@ function Invoke-SectionBaseline {
             Write-KV "  $key" ('{0,-12} {1,-12} {2}{3}{4}' -f "$oldVal$($c.Unit)", "$newVal$($c.Unit)", $sign, $delta, $c.Unit) $lvl
         }
 
-        $baseDate = $base.report_time ?? '(unknown date)'
+        $baseDate = if ($null -ne $base.report_time) { $base.report_time } else { '(unknown date)' }
         Write-Line ''
         Write-KV '  Baseline captured' $baseDate
     } catch {
