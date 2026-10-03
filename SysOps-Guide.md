@@ -113,6 +113,15 @@ winget install --id Microsoft.PowerShell --source winget
 
 <br>
 
+### Upgrade Packages *(Winget)*
+- **Open Powershell:** via `Win + X`, then `A`
+- **Enter Command:**
+```powershell
+winget upgrade --all --silent --accept-source-agreements --accept-package-agreements --include-unknown
+```
+
+<br>
+
 ### CTT Optimization *(WinUtil)*
 - **Open Powershell:** via `Win + X`, then `A`
 - **Enter Command:**
