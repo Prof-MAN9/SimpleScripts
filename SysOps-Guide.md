@@ -25,6 +25,7 @@
   - [Windows Memory Diagnostic](#windows-memory-diagnostic)
 - [Optimization](#optimization)
   - [Auto Optimization - Recommended](#auto-optimization-recommended)
+  - [Upgrade Packages - Winget](#upgrade-packages-winget)
   - [CTT Optimization - WinUtil](#ctt-optimization-winutil)
   - [MSConfig - System Configuration](#msconfig-system-configuration)
   - [System Properties](#system-properties)
