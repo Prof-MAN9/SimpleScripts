@@ -169,6 +169,7 @@ irm https://christitus.com/win | iex
   - Downloaded Maps Manager
   - Phone Service
   - Wallet Service
+  - SysMain *(for low end devices)*
 
   <br>
 
