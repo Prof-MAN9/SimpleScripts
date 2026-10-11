@@ -174,7 +174,7 @@ irm https://christitus.com/win | iex
   <br>
 
   ### Windows Settings
-- **Open Settings:** via `Win + X`, then `I`
+- **Open Settings:** via `Win + X`, then `N`
   - **Disable Widgets:** Navigate to *Personalization > Taskbar* and turn off *Widgets*
   - **Disable Link-Apps:** Navigate to *Apps > Apps for Websites* and turn everything off
   - **Disable Game-Bar:** Navigate to *Gaming > Xbox Game Bar* and turn off
