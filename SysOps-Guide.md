@@ -9,7 +9,7 @@
 
 |**Version**|**Author**|**Made For**|
 |:---:|:---:|:---|
-|2026.09|Prof_MAN9|Windows 11|
+|2026.10|Prof_MAN9|Windows 11|
 
 </div>
 
@@ -27,6 +27,8 @@
   - [Auto Optimization - Recommended](#auto-optimization-recommended)
   - [Upgrade Packages - Winget](#upgrade-packages-winget)
   - [CTT Optimization - WinUtil](#ctt-optimization-winutil)
+    - [O&O Shutup10++](#oo-shutup10)
+  - [Win11Debloat](#win11debloat)
   - [MSConfig - System Configuration](#msconfig-system-configuration)
   - [System Properties](#system-properties)
     - [FOR LAPTOP](#for-laptop)
@@ -130,6 +132,21 @@ winget upgrade --all --silent --accept-source-agreements --accept-package-agreem
 irm https://christitus.com/win | iex
 ```
 - **Enable Tweaks:** Open *Tweaks* tab, select "Standard" and press *Run*
+
+#### O&O Shutup10++
+- **Launch Utility:** via *Tweaks* tab, and press the *O&O Shutup10++* button
+- **Apply Tweaks:** Press *Action* tab, then *Apply all reccomended tweaks*
+
+<br>
+
+### Win11Debloat
+- **Open Powershell:** via `Win + X`, then `A`
+- **Enter Command:**
+```powershell
+& ([scriptblock]::Create((irm "https://debloat.raphi.re/")))
+```
+- Wait for the script to automatically download and launch *Win11Debloat*.
+- Carefully read through and follow the on-screen instructions.
 
 <br>
 
