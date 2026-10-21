@@ -368,6 +368,7 @@ Write-Host "===========================================================" -Foregr
 Write-Host " Target URL : $Url" -ForegroundColor Gray
 Write-Host " Quality    : $Quality $(if ($AudioOnly) { '[Audio Only]' })" -ForegroundColor Gray
 Write-Host " VLC Binary : $VlcPath" -ForegroundColor DarkGray
+Wtite-Host " Credits    : Prof_MAN" -ForegroundColor DarkCyan
 Write-Host "-----------------------------------------------------------" -ForegroundColor DarkGray
 
 # 7. Asynchronous Extraction Process (Single-pass metadata + streams)
